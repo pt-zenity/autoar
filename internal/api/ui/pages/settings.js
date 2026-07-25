@@ -253,7 +253,7 @@
           </div>
         </div>
 
-        <div class="settings-section" data-tab="status">
+          <div class="settings-section" data-tab="status">
           <div class="settings-section-header"> Cloudflare R2 Infrastructure</div>
           <div class="settings-section-body">
             ${item('R2 Status', cfg.r2_enabled ? 'Connected' : 'Not Configured', 'Cloud artifact storage', cfg.r2_enabled ? 'ok' : 'warn')}
