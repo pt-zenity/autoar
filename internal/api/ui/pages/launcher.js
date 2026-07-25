@@ -25,6 +25,7 @@
     github_org: { path: 'github_org', modes: ['domain', 'domain_list'], placeholders: { domain: 'org-name or github.com/org', domain_list: 'one org per line' } },
     zerodays: { path: 'zerodays', modes: ['domain', 'domain_list'], placeholders: { domain: 'example.com', domain_list: 'one domain per line' } },
     ffuf: { path: 'ffuf', modes: ['target', 'target_list'], placeholders: { target: 'https://example.com/FUZZ', target_list: 'one FUZZ URL per line' } },
+    goofuzz: { path: 'goofuzz', modes: ['domain', 'domain_list'], placeholders: { domain: 'example.com', domain_list: 'one domain per line' } },
   };
 
   const LAUNCH_MODE_LABELS = {
@@ -80,6 +81,18 @@
       { key: 'wp2shell_confirm_sqli', label: 'wp2shell: confirm SQLi', type: 'bool', advanced: true, help: 'After a wp2shell route-confusion hit, run a benign time-based SQLi check (CVE-2026-60137) to upgrade the finding. Only on in-scope, authorized targets.' },
       { key: 'mongodb_host', label: 'MongoDB host', type: 'text', advanced: true, help: 'Target host for the MongoDB CVE-2025-14847 check.' },
       { key: 'mongodb_port', label: 'MongoDB port', type: 'number', min: 1, default: 27017, advanced: true, help: 'MongoDB port (default 27017).' },
+    ],
+    goofuzz: [
+      { key: 'goofuzz_cx_id',       label: 'Google CX ID',       type: 'text',   advanced: false, help: 'Google Programmable Search Engine ID. Get it at programmablesearchengine.google.com. Required (or set GOOFUZZ_CX_ID env var on the server).' },
+      { key: 'goofuzz_api_key',      label: 'Google API Key',     type: 'text',   advanced: false, help: 'Google Custom Search API key from console.cloud.google.com. Required (or set GOOFUZZ_API_KEY env var).' },
+      { key: 'goofuzz_extensions',   label: 'Extensions (csv)',   type: 'text',   advanced: false, help: 'File extensions to search for, e.g. pdf,doc,bak,zip,xls. Leave empty to skip extension search.' },
+      { key: 'goofuzz_subdomains',   label: 'Enumerate subdomains', type: 'bool', advanced: false, help: 'Use Google dorks to enumerate subdomains of the target domain.' },
+      { key: 'goofuzz_wordlist',     label: 'Wordlist (csv/path)', type: 'text',  advanced: false, help: 'Comma-separated paths/words (e.g. admin,login,backup) or a server-side wordlist file path.' },
+      { key: 'goofuzz_content',      label: 'Content keyword',    type: 'text',   advanced: false, help: 'Find pages/files containing this keyword (e.g. password, config, secret).' },
+      { key: 'goofuzz_pages',        label: 'Result pages',       type: 'number', min: 1, default: 1, advanced: false, help: 'Number of Google result pages to fetch per query (1 page ≈ 10 results). More pages = more results but slower.' },
+      { key: 'goofuzz_exclusions',   label: 'Exclude subdomains', type: 'text',   advanced: true,  help: 'Comma-separated subdomains to exclude from results (e.g. www.example.com,staging.example.com).' },
+      { key: 'delay',                label: 'Delay (seconds)',    type: 'number', min: 0, default: 0, advanced: true, help: 'Delay in seconds between Google API requests to avoid rate limiting.' },
+      { key: 'goofuzz_proxy',        label: 'Proxy URL',          type: 'text',   advanced: true,  help: 'Optional proxy, e.g. http://proxy.example.com:8080' },
     ],
     backup: [{ key: 'threads', label: 'Threads', type: 'number', min: 1, default: 20, advanced: false, help: 'Concurrent backup-file probes.' }],
     misconfig: [

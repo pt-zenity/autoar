@@ -42,6 +42,7 @@ import (
 	urlsmod "github.com/h0tak88r/AutoAR/internal/scanner/urls"
 	jsendpointsmod "github.com/h0tak88r/AutoAR/internal/scanner/jsendpoints"
 	zerodaysmod "github.com/h0tak88r/AutoAR/internal/scanner/zerodays"
+	goofuzzmod "github.com/h0tak88r/AutoAR/internal/scanner/goofuzz"
 	"github.com/h0tak88r/AutoAR/internal/utils"
 )
 
@@ -527,6 +528,58 @@ func scanFFuf(c *gin.Context) {
 		return err
 	})
 	okStarted(c, scanID, fmt.Sprintf("FFuf fuzzing started for %s", target))
+}
+
+// ── GooFuzz ──────────────────────────────────────────────────────────────────
+
+func scanGooFuzz(c *gin.Context) {
+	var req ScanRequest
+	if !bindOrBad(c, &req) {
+		return
+	}
+	if !requireField(c, req.Domain, "domain") {
+		return
+	}
+	domain := *req.Domain
+
+	opts := goofuzzmod.Options{Target: domain}
+	if req.GooFuzzCXID != nil {
+		opts.CXID = *req.GooFuzzCXID
+	}
+	if req.GooFuzzAPIKey != nil {
+		opts.APIKey = *req.GooFuzzAPIKey
+	}
+	if req.GooFuzzExtensions != nil {
+		opts.Extensions = *req.GooFuzzExtensions
+	}
+	if req.GooFuzzWordlist != nil {
+		opts.Wordlist = *req.GooFuzzWordlist
+	}
+	if req.GooFuzzSubdomains != nil {
+		opts.Subdomains = *req.GooFuzzSubdomains
+	}
+	if req.GooFuzzContent != nil {
+		opts.Content = *req.GooFuzzContent
+	}
+	if req.GooFuzzPages != nil && *req.GooFuzzPages > 0 {
+		opts.Pages = *req.GooFuzzPages
+	}
+	if req.GooFuzzExclusions != nil {
+		opts.Exclusions = *req.GooFuzzExclusions
+	}
+	if req.Delay != nil && *req.Delay > 0 {
+		opts.Delay = *req.Delay
+	}
+	if req.GooFuzzProxy != nil {
+		opts.Proxy = *req.GooFuzzProxy
+	}
+
+	scanID := generateScanID()
+	go RunScanInProcess(scanID, "goofuzz", domain, func() error {
+		_, err := goofuzzmod.Run(opts)
+		return err
+	})
+	okStarted(c, scanID, fmt.Sprintf("GooFuzz OSINT scan started for %s", domain))
 }
 
 // ── Backup ────────────────────────────────────────────────────────────────────

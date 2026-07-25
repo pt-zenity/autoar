@@ -78,6 +78,7 @@ window.getFileTypeFromName = getFileTypeFromName;
 window.getFileTypeIcon = getFileTypeIcon;
 window.detectModuleFromFileName = detectModuleFromFileName;
 window.normalizeModuleKey = normalizeModuleKey;
+window.previewDataToFlatRows = previewDataToFlatRows;
 window.categorizeScanArtifactFile = categorizeScanArtifactFile;
 window.filterScanFiles = filterScanFiles;
 window.copyAllScanResults = copyAllScanResults;

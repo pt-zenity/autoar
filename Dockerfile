@@ -20,6 +20,12 @@ RUN git clone --depth 1 https://github.com/trufflesecurity/trufflehog.git /tmp/t
     rm -rf /tmp/trufflehog && \
     go install -v github.com/d3mondev/puredns/v2@latest
 
+# Install GooFuzz (OSINT Google-dork fuzzing script)
+RUN git clone --depth 1 https://github.com/m3n0sd0n4ld/GooFuzz.git /tmp/GooFuzz && \
+    cp /tmp/GooFuzz/GooFuzz /go/bin/GooFuzz && \
+    chmod +x /go/bin/GooFuzz && \
+    rm -rf /tmp/GooFuzz
+
 # Build AutoAR main CLI and entrypoint
 WORKDIR /app
 
@@ -80,7 +86,7 @@ RUN cd /app && \
     git clone --depth 1 https://github.com/h0tak88r/nuclei_templates.git nuclei_templates && \
     git clone --depth 1 https://github.com/h0tak88r/Wordlists.git Wordlists
 
-# Copy Go tools from builder stage
+# Copy Go tools from builder stage (includes trufflehog, puredns, GooFuzz)
 COPY --from=builder /go/bin/ /usr/local/bin/
 # Copy main autoar binary
 COPY --from=builder /app/autoar /usr/local/bin/autoar

@@ -101,3 +101,36 @@ func IsScanCancelled(scanID string) bool {
 	}
 	return isCancelledFn(scanID)
 }
+
+// isPausedFn is a hook registered by the api package to check pause state.
+var isPausedFn func(scanID string) bool
+
+// waitIfPausedFn is a hook registered by the api package to block while paused.
+var waitIfPausedFn func(scanID string) bool
+
+// RegisterPauseChecker lets the api package inject its pause-check function.
+func RegisterPauseChecker(fn func(scanID string) bool) {
+	isPausedFn = fn
+}
+
+// RegisterPauseWaiter lets the api package inject its WaitIfPaused function.
+func RegisterPauseWaiter(fn func(scanID string) bool) {
+	waitIfPausedFn = fn
+}
+
+// IsScanPaused reports whether the scan with the given ID is currently paused.
+func IsScanPaused(scanID string) bool {
+	if isPausedFn == nil || scanID == "" {
+		return false
+	}
+	return isPausedFn(scanID)
+}
+
+// WaitIfScanPaused blocks the caller until the scan is resumed (or never blocks
+// if not paused). Returns true if it was paused and now resumed.
+func WaitIfScanPaused(scanID string) bool {
+	if waitIfPausedFn == nil || scanID == "" {
+		return false
+	}
+	return waitIfPausedFn(scanID)
+}

@@ -406,6 +406,16 @@ type ScanRequest struct {
 	DNSType *string `json:"dns_type"` // DNS scan type: takeover, dangling-ip
 	// URLs options
 	SkipSubdomainEnum *bool `json:"skip_subdomain_enum"` // URLs: skip subdomain enumeration (treat as single subdomain)
+	// GooFuzz options
+	GooFuzzCXID       *string `json:"goofuzz_cx_id"`      // Google Programmable Search Engine ID
+	GooFuzzAPIKey     *string `json:"goofuzz_api_key"`    // Google Custom Search API key
+	GooFuzzExtensions *string `json:"goofuzz_extensions"` // comma-separated extensions (pdf,doc,bak)
+	GooFuzzWordlist   *string `json:"goofuzz_wordlist"`   // comma-separated words or wordlist file path
+	GooFuzzSubdomains *bool   `json:"goofuzz_subdomains"` // enumerate subdomains via Google dorks
+	GooFuzzContent    *string `json:"goofuzz_content"`    // find pages/files containing this keyword
+	GooFuzzPages      *int    `json:"goofuzz_pages"`      // number of result pages (default 1)
+	GooFuzzExclusions *string `json:"goofuzz_exclusions"` // comma-separated subdomains to exclude
+	GooFuzzProxy      *string `json:"goofuzz_proxy"`      // proxy URL for GooFuzz requests
 }
 
 type ScanResponse struct {
@@ -454,6 +464,11 @@ func SetupAPI() *gin.Engine {
 	} else if err := db.EnsureSchema(); err != nil {
 		utils.GetLogger().Infof("[WARN] DB schema at startup: %v", err)
 	}
+
+	// Wire logrus → SSE log bus: every log line emitted inside a scan goroutine
+	// is automatically forwarded to the live-log panel in the dashboard.
+	RegisterLogBusHook()
+	StartLogBusKeepalive()
 
 	gin.SetMode(gin.ReleaseMode)
 	gin.DefaultWriter = utils.GetLogger().Out
@@ -645,6 +660,7 @@ func SetupAPI() *gin.Engine {
 		api.POST("/github_org", scanGitHubOrg)
 		api.POST("/recon", scanRecon)         // Unified asset discovery: subdomains, livehosts, tech, cnames
 		api.POST("/ffuf", scanFFuf)           // FFuf fuzzing
+		api.POST("/goofuzz", scanGooFuzz)     // GooFuzz OSINT Google-dork fuzzing
 		api.POST("/backup", scanBackup)       // Backup file discovery
 		api.POST("/misconfig", scanMisconfig) // Cloud misconfiguration scan
 		api.POST("/zerodays", scanZerodays)   // Zerodays scan (CVE-2025-55182 React2Shell, CVE-2025-14847 MongoDB)

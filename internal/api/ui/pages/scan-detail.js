@@ -49,6 +49,283 @@
   let _assetsCache = null;
   let _assetsLoading = false;
 
+  // ── Live Log Module ─────────────────────────────────────────────────────
+  // Manages SSE connection + DOM rendering for the live log panel.
+  const LiveLog = (() => {
+    let _sse = null;          // active EventSource
+    let _scanId = null;       // scan currently being watched
+    let _lineCount = 0;       // total lines received (including paused)
+    let _pendingLines = [];   // lines buffered while paused
+    let _autoScroll = true;
+    let _paused = false;
+    let _collapsed = false;
+    let _reconnectTimer = null;
+    let _retries = 0;
+
+    // Classify a log line for CSS colouring
+    function classifyLine(text) {
+      const t = text.toLowerCase();
+      if (/\[phase|phase:|running phase|starting phase|=== |--- /.test(t)) return 'log-phase';
+      if (/\[err\]|error|fail|fatal|panic/.test(t)) return 'log-error';
+      if (/\[warn\]|warn(ing)?/.test(t)) return 'log-warn';
+      if (/✓|✔|\[info\].*(?:found|ok|done|success|complet)|^\d{2}:\d{2}:\d{2} \[info\] scan (completed|finished)/.test(t)) return 'log-ok';
+      if (/\[dbg\]|debug|verbose/.test(t)) return 'log-debug';
+      return 'log-info';
+    }
+
+    // Extract a short timestamp token from the line (e.g. "14:32:05")
+    function extractTs(text) {
+      const m = text.match(/^(\d{1,2}:\d{2}:\d{2})\b/);
+      return m ? m[1] : '';
+    }
+
+    function buildLineEl(text, animate) {
+      const cls = classifyLine(text);
+      const ts = extractTs(text);
+      // Strip leading timestamp from message body if we extracted it
+      const body = ts ? text.slice(ts.length).replace(/^\s+/, '') : text;
+      const div = document.createElement('div');
+      div.className = `live-log-line ${cls}${animate ? ' new-line' : ''}`;
+      div.innerHTML = ts
+        ? `<span class="log-ts">${window.esc(ts)}</span><span class="log-msg">${window.esc(body)}</span>`
+        : `<span class="log-msg">${window.esc(text)}</span>`;
+      return div;
+    }
+
+    function getBody()       { return document.getElementById('live-log-body'); }
+    function getPanel()      { return document.getElementById('live-log-panel'); }
+    function getCountBadge() { return document.getElementById('live-log-count'); }
+    function getDot()        { return document.getElementById('live-log-dot'); }
+    function getStatus()     { return document.getElementById('live-log-status'); }
+
+    function appendLine(text, animate = true) {
+      // Skip keepalive comments
+      if (!text || text.startsWith(': ')) return;
+
+      _lineCount++;
+      const badge = getCountBadge();
+      if (badge) badge.textContent = `${_lineCount} lines`;
+
+      if (_paused) {
+        _pendingLines.push({ text, animate });
+        const statusEl = getStatus();
+        if (statusEl) statusEl.textContent = `⏸ paused (+${_pendingLines.length} buffered)`;
+        return;
+      }
+
+      const body = getBody();
+      if (!body) return;
+      const el = buildLineEl(text, animate);
+      body.appendChild(el);
+      // Cap DOM lines to 2000 to prevent memory buildup
+      while (body.children.length > 2000) body.removeChild(body.firstChild);
+      if (_autoScroll) body.scrollTop = body.scrollHeight;
+    }
+
+    function flushPending() {
+      const body = getBody();
+      if (!body || !_pendingLines.length) return;
+      const frag = document.createDocumentFragment();
+      for (const { text, animate } of _pendingLines) {
+        if (text && !text.startsWith(': ')) frag.appendChild(buildLineEl(text, animate));
+      }
+      _pendingLines = [];
+      body.appendChild(frag);
+      while (body.children.length > 2000) body.removeChild(body.firstChild);
+      if (_autoScroll) body.scrollTop = body.scrollHeight;
+    }
+
+    function setDotState(state) {
+      const dot = getDot();
+      if (!dot) return;
+      dot.className = 'live-log-dot';
+      if (state === 'paused') dot.classList.add('paused');
+      else if (state === 'done') dot.classList.add('done');
+      const statusEl = getStatus();
+      if (statusEl && !_paused) {
+        if (state === 'done') statusEl.textContent = 'scan finished';
+        else if (state === 'live') statusEl.textContent = 'streaming live…';
+        else if (state === 'paused') statusEl.textContent = '⏸ paused';
+        else if (state === 'connecting') statusEl.textContent = 'connecting…';
+      }
+    }
+
+    function stop() {
+      if (_reconnectTimer) { clearTimeout(_reconnectTimer); _reconnectTimer = null; }
+      if (_sse) { try { _sse.close(); } catch (_) {} _sse = null; }
+      _scanId = null;
+      _retries = 0;
+    }
+
+    function start(scanId) {
+      stop();
+      if (!scanId) return;
+      _scanId = scanId;
+      _lineCount = 0;
+      _pendingLines = [];
+      _retries = 0;
+
+      const body = getBody();
+      if (body) body.innerHTML = '';
+      setDotState('connecting');
+
+      _connect(scanId);
+    }
+
+    function _connect(scanId) {
+      if (_sse) { try { _sse.close(); } catch (_) {} _sse = null; }
+
+      const token = window.state?.token || localStorage.getItem('autoar_token') || '';
+      const url = `/api/scans/${encodeURIComponent(scanId)}/logs/stream` + (token ? `?token=${encodeURIComponent(token)}` : '');
+
+      try {
+        _sse = new EventSource(url);
+      } catch (e) {
+        appendLine('[LiveLog] EventSource not supported in this browser.', false);
+        return;
+      }
+
+      _sse.addEventListener('log', (e) => {
+        setDotState('live');
+        appendLine(e.data, true);
+      });
+
+      _sse.addEventListener('done', () => {
+        appendLine('─────────── scan finished ───────────', false);
+        setDotState('done');
+        stop();
+      });
+
+      _sse.onerror = () => {
+        if (!_scanId) return; // stopped intentionally
+        if (_sse && _sse.readyState === EventSource.CLOSED) {
+          _sse = null;
+          _retries++;
+          // Exponential backoff: 2s, 4s, 8s … max 30s
+          const delay = Math.min(2000 * Math.pow(2, _retries - 1), 30000);
+          const statusEl = getStatus();
+          if (statusEl) statusEl.textContent = `reconnecting in ${Math.round(delay / 1000)}s…`;
+          _reconnectTimer = setTimeout(() => {
+            if (_scanId) _connect(_scanId);
+          }, delay);
+        }
+      };
+    }
+
+    function toggleAutoScroll() {
+      _autoScroll = !_autoScroll;
+      const btn = document.getElementById('live-log-autoscroll-btn');
+      if (btn) {
+        btn.classList.toggle('active', _autoScroll);
+        btn.title = _autoScroll ? 'Auto-scroll ON' : 'Auto-scroll OFF';
+        btn.innerHTML = _autoScroll ? '↓ Scroll' : '↕ Scroll';
+      }
+      if (_autoScroll) {
+        const body = getBody();
+        if (body) body.scrollTop = body.scrollHeight;
+      }
+    }
+
+    function togglePause() {
+      _paused = !_paused;
+      const btn = document.getElementById('live-log-pause-btn');
+      if (btn) btn.innerHTML = _paused ? '▶ Resume' : '⏸ Pause';
+      if (!_paused) {
+        flushPending();
+        setDotState(_sse ? 'live' : 'done');
+      } else {
+        setDotState('paused');
+      }
+    }
+
+    function clearLog() {
+      const body = getBody();
+      if (body) body.innerHTML = '';
+      _pendingLines = [];
+      _lineCount = 0;
+      const badge = getCountBadge();
+      if (badge) badge.textContent = '0 lines';
+    }
+
+    function toggleCollapse() {
+      _collapsed = !_collapsed;
+      const panel = getPanel();
+      if (!panel) return;
+      const body = getBody();
+      const btn = document.getElementById('live-log-collapse-btn');
+      if (body) body.style.display = _collapsed ? 'none' : '';
+      if (btn) btn.innerHTML = _collapsed ? '▼ Show' : '▲ Hide';
+      panel.classList.toggle('collapsed', _collapsed);
+    }
+
+    async function copyAll() {
+      const body = getBody();
+      if (!body) return;
+      const lines = Array.from(body.querySelectorAll('.live-log-line')).map(el => {
+        const ts = el.querySelector('.log-ts')?.textContent || '';
+        const msg = el.querySelector('.log-msg')?.textContent || '';
+        return ts ? `${ts} ${msg}` : msg;
+      });
+      try {
+        await navigator.clipboard.writeText(lines.join('\n'));
+        window.showToast?.('success', 'Copied', `${lines.length} log lines copied`);
+      } catch (e) {
+        window.showToast?.('error', 'Copy failed', String(e));
+      }
+    }
+
+    // Render the panel HTML (inserted before scan results)
+    function buildPanelHtml() {
+      return `
+        <div class="live-log-panel" id="live-log-panel">
+          <div class="live-log-header">
+            <div class="live-log-title">
+              <span class="live-log-dot" id="live-log-dot"></span>
+              <span class="live-log-title-text"> Live Logs</span>
+              <span class="live-log-badge" id="live-log-count">0 lines</span>
+              <span class="live-log-status" id="live-log-status">connecting…</span>
+            </div>
+            <div class="live-log-controls">
+              <button class="live-log-btn active" id="live-log-autoscroll-btn" title="Auto-scroll ON" onclick="window.LiveLog.toggleAutoScroll()">↓ Scroll</button>
+              <button class="live-log-btn" id="live-log-pause-btn" onclick="window.LiveLog.togglePause()">⏸ Pause</button>
+              <button class="live-log-btn" onclick="window.LiveLog.copyAll()" title="Copy all log lines">⎘ Copy</button>
+              <button class="live-log-btn" onclick="window.LiveLog.clearLog()" title="Clear log panel">✕ Clear</button>
+              <button class="live-log-btn" id="live-log-collapse-btn" onclick="window.LiveLog.toggleCollapse()" title="Toggle log panel">▲ Hide</button>
+            </div>
+          </div>
+          <div class="live-log-body" id="live-log-body">
+            <div class="live-log-empty">
+              <span class="live-log-spinner"></span>
+              Connecting to log stream…
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function syncState(stat) {
+      if (!getPanel()) return;
+      const lower = String(stat || '').toLowerCase();
+      if (/paused/.test(lower)) {
+        setDotState('paused');
+        const btn = document.getElementById('live-log-pause-btn');
+        if (btn) btn.innerHTML = '▶ Resume';
+        _paused = true;
+      } else if (/running|starting|active/.test(lower)) {
+        if (!_paused) setDotState('live');
+        // Re-connect SSE if it dropped
+        if (!_sse && _scanId) _connect(_scanId);
+      } else {
+        setDotState('done');
+        stop();
+      }
+    }
+
+    return { start, stop, toggleAutoScroll, togglePause, clearLog, toggleCollapse, copyAll, buildPanelHtml, syncState };
+  })();
+
+  // Expose on window so inline onclick handlers work
+  window.LiveLog = LiveLog;
+
   async function renderScanDetailView(scanId) {
     _assetsCache = null;
     _assetsLoading = false;
@@ -217,7 +494,19 @@
 
       container.innerHTML = html;
 
-      // Wire manifest pipeline row clicks after DOM insertion.
+      // ── Inject live log panel when scan is running ──────────────────────────
+      if (stillRunning) {
+        const scanDetailModern = container.querySelector('.scan-detail-modern');
+        if (scanDetailModern) {
+          const logPanelDiv = document.createElement('div');
+          logPanelDiv.innerHTML = LiveLog.buildPanelHtml();
+          // Insert as first child inside .scan-detail-modern
+          scanDetailModern.insertBefore(logPanelDiv.firstElementChild, scanDetailModern.firstChild);
+          LiveLog.start(scanId);
+        }
+      } else {
+        LiveLog.stop();
+      }
       const manifestCardEl = container.querySelector('.modern-card');
       if (manifestCardEl) {
         window.ScanDetailManifest.wireManifestRowClicks(manifestCardEl);
@@ -288,6 +577,9 @@
       }
 
       refreshScanManifestCard(scanId, scan);
+
+      // Sync live log panel state with scan status
+      LiveLog.syncState(stat);
 
       const badge = document.getElementById('unified-parsed-badge');
       if (badge) {

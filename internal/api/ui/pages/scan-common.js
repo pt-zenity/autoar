@@ -76,6 +76,7 @@
       case 'zerodays':
       case '0days': return `[ -- ] 0-Days — No zero-day vulnerabilities found for ${t}`;
       case 'ffuf': return `[ -- ] FFuf — No hidden directories found for ${t}`;
+      case 'goofuzz': return `[ -- ] GooFuzz — No results found via Google dorks for ${t}`;
       case 'dns': return `[ -- ] DNS takeover — No vulnerable records or dangling IPs found for ${t}`;
       case 'cf1016': return `[ -- ] CF1016 dangling DNS — No missing Cloudflare origins found for ${t}`;
       default: {
@@ -167,6 +168,7 @@
       'github-scan': { icon: '', name: 'GitHub Secrets', color: '#94a3b8' },
       reflection: { icon: '', name: 'Reflection', color: '#f97316' },
       'ffuf-fuzzing': { icon: '', name: 'FFUF Fuzzing', color: '#f43f5e' },
+      'goofuzz': { icon: '', name: 'GooFuzz OSINT', color: '#a78bfa' },
       'url-collection': { icon: '', name: 'URL Collection', color: '#38bdf8' },
       exposure: { icon: '', name: 'Exposure', color: '#f59e0b' },
       autoar: { icon: '', name: 'AutoAR', color: '#4ade80' },

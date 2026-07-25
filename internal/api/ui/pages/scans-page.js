@@ -65,6 +65,7 @@
       github_org: ' GitHub Org',
       github_scan: ' GitHub',
       ffuf: ' FFuf Fuzz',
+      goofuzz: ' GooFuzz',
       zerodays: ' Zero-Days',
       aem: ' AEM Scan',
       aem_scan: ' AEM Scan',
@@ -149,7 +150,7 @@
           <span style="font-size:11px;color:var(--text-muted)">Phase ${currentPhase}${totalPhases > 0 ? '/' + totalPhases : ''} · ${pct}%</span>
           <div style="display:flex;gap:10px;align-items:center">
             ${(() => {
-    const isFindingType = ['reflection', 'dns_cf1016', 'dns-cf1016', 'dns', 'dns-takeover', 'dns-dangling-ip', 'nuclei', 'nuclei-full', 'nuclei-cves', 'nuclei-panels', 'nuclei-vulnerabilities', 'nuclei-default-logins', 'misconfig', 's3', 'github', 'github_org', 'github_scan', 'zerodays', 'pipeline', 'gf', 'ffuf', 'sqlmap', 'backup', 'mcp-discovery'].includes(scanType);
+    const isFindingType = ['reflection', 'dns_cf1016', 'dns-cf1016', 'dns', 'dns-takeover', 'dns-dangling-ip', 'nuclei', 'nuclei-full', 'nuclei-cves', 'nuclei-panels', 'nuclei-vulnerabilities', 'nuclei-default-logins', 'misconfig', 's3', 'github', 'github_org', 'github_scan', 'zerodays', 'gf', 'ffuf', 'goofuzz', 'sqlmap', 'backup', 'mcp-discovery'].includes(scanType);
     const label = isFindingType ? (filesUploaded === 1 ? 'finding' : 'findings') : (filesUploaded === 1 ? 'file' : 'files');
     const icon = isFindingType ? '' : '';
     return filesUploaded > 0 ? `<span style="font-size:10px;color:var(--text-muted)">${icon} ${filesUploaded} ${label}</span>` : '';
@@ -177,6 +178,15 @@
     </div>
     ${phaseTimeline}
     ${progressBlock}
+    ${isActive && scanID ? `
+    <div onclick="event.stopPropagation()">
+      <span class="scan-log-toggle" id="log-toggle-${window.esc(scanID)}" onclick="window.ScanListLog.toggle(${JSON.stringify(scanID)}, this)">
+        <span class="toggle-arrow">▼</span> Logs
+      </span>
+      <div class="scan-log-tail" id="log-tail-${window.esc(scanID)}">
+        <div class="scan-log-tail-body" id="log-tail-body-${window.esc(scanID)}"></div>
+      </div>
+    </div>` : ''}
   </div>`;
   }
 
@@ -218,7 +228,7 @@
     const elapsed = completedAt ? elapsedBetween(startedAt, completedAt) : elapsedStr(startedAt);
     const scanID = s.scan_id || s.ScanID || '';
     const filesUploaded = s.files_uploaded || s.FilesUploaded || 0;
-    const isFindingType = ['reflection', 'dns_cf1016', 'dns-cf1016', 'dns', 'dns-takeover', 'dns-dangling-ip', 'nuclei', 'nuclei-full', 'nuclei-cves', 'nuclei-panels', 'nuclei-vulnerabilities', 'nuclei-default-logins', 'misconfig', 's3', 'github', 'github_org', 'github_scan', 'zerodays', 'jwt', 'pipeline', 'gf', 'ffuf', 'sqlmap', 'backup', 'mcp-discovery'].includes(scanType);
+    const isFindingType = ['reflection', 'dns_cf1016', 'dns-cf1016', 'dns', 'dns-takeover', 'dns-dangling-ip', 'nuclei', 'nuclei-full', 'nuclei-cves', 'nuclei-panels', 'nuclei-vulnerabilities', 'nuclei-default-logins', 'misconfig', 's3', 'github', 'github_org', 'github_scan', 'zerodays', 'jwt', 'gf', 'ffuf', 'goofuzz', 'sqlmap', 'backup', 'mcp-discovery'].includes(scanType);
     const label = isFindingType ? 'findings' : 'files';
     const icon = isFindingType ? '' : '';
     const badgeHtml = filesUploaded > 0 ? `<span class="badge badge-running" style="font-size:10px;padding:2px 6px;margin-bottom:4px;display:inline-block;background:rgba(6,182,212,0.15);border:1px solid rgba(6,182,212,0.3);color:var(--accent-cyan);cursor:help" title="${filesUploaded} ${label} identified">${icon} ${filesUploaded} ${label}</span><br/>` : '';
@@ -312,6 +322,7 @@
               <option value="misconfig" ${lUI.scanType === 'misconfig' ? 'selected' : ''}>misconfig</option>
               <option value="zerodays" ${lUI.scanType === 'zerodays' ? 'selected' : ''}>zerodays</option>
               <option value="ffuf" ${lUI.scanType === 'ffuf' ? 'selected' : ''}>ffuf</option>
+              <option value="goofuzz" ${lUI.scanType === 'goofuzz' ? 'selected' : ''}>goofuzz (Google OSINT)</option>
             </optgroup>
           </select>
         </div>
@@ -426,6 +437,74 @@
       if (se) { se.textContent = st.text; se.style.color = st.color || 'var(--text-muted)'; se.style.display = st.text ? '' : 'none'; }
     }
   }
+
+  // ── ScanListLog — mini live-log tails on active scan cards ────────────────
+  // Each scan card can toggle an expandable mini-log tail driven by SSE.
+  const ScanListLog = (() => {
+    const _streams = {}; // scanID → EventSource
+
+    function classifyLine(t) {
+      const l = t.toLowerCase();
+      if (/\[phase|phase:|=== |--- /.test(l)) return 'log-phase';
+      if (/error|fail|fatal/.test(l)) return 'log-error';
+      if (/warn/.test(l)) return 'log-warn';
+      if (/✓|✔|ok\b|success|found|completed|done/.test(l)) return 'log-ok';
+      return '';
+    }
+
+    function appendToTail(scanID, text) {
+      const body = document.getElementById(`log-tail-body-${scanID}`);
+      if (!body) return;
+      // Strip noisy timestamp prefix
+      const clean = text.replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[Z\+\-\d:]*\s*/, '').replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/, '');
+      const cls = classifyLine(text);
+      const el = document.createElement('div');
+      el.className = `scan-log-tail-line${cls ? ' ' + cls : ''}`;
+      el.textContent = clean;
+      body.appendChild(el);
+      while (body.children.length > 80) body.removeChild(body.firstChild);
+      body.scrollTop = body.scrollHeight;
+    }
+
+    function startStream(scanID) {
+      if (_streams[scanID]) return; // already streaming
+      const token = window.state?.token || localStorage.getItem('autoar_token') || '';
+      const url = `/api/scans/${encodeURIComponent(scanID)}/logs/stream` + (token ? `?token=${encodeURIComponent(token)}` : '');
+      try {
+        const sse = new EventSource(url);
+        _streams[scanID] = sse;
+        sse.addEventListener('log', (e) => appendToTail(scanID, e.data));
+        sse.addEventListener('done', () => stopStream(scanID));
+        sse.onerror = () => {
+          if (sse.readyState === EventSource.CLOSED) stopStream(scanID);
+        };
+      } catch (_) { /* SSE unsupported */ }
+    }
+
+    function stopStream(scanID) {
+      if (_streams[scanID]) { try { _streams[scanID].close(); } catch (_) {} delete _streams[scanID]; }
+    }
+
+    function toggle(scanID, toggleEl) {
+      const tail = document.getElementById(`log-tail-${scanID}`);
+      if (!tail) return;
+      const open = tail.classList.toggle('expanded');
+      toggleEl.classList.toggle('open', open);
+      if (open) {
+        startStream(scanID);
+      } else {
+        stopStream(scanID);
+      }
+    }
+
+    function stopAll() {
+      Object.keys(_streams).forEach(stopStream);
+    }
+
+    return { toggle, stopAll };
+  })();
+
+  window.ScanListLog = ScanListLog;
 
   window.ScansPage = {
     scanTypeLabel,

@@ -66,6 +66,19 @@ func RunWorkflowPhase(phaseKey string, step, total int, description, target stri
 		return fmt.Errorf("scan cancelled")
 	}
 
+	// Block here if the scan has been paused. This causes the goroutine to
+	// wait at the phase boundary until the user resumes the scan.
+	if IsScanPaused(scanID) {
+		GetLogger().Infof("[PAUSE] %s — scan %s paused; waiting for resume…", description, scanID)
+		WaitIfScanPaused(scanID)
+		GetLogger().Infof("[RESUME] %s — scan %s resumed", description, scanID)
+		// Re-check cancel after resume (user may have cancelled while paused).
+		if IsScanCancelled(scanID) {
+			GetLogger().Infof("[CANCEL] %s — scan %s was cancelled while paused", description, scanID)
+			return fmt.Errorf("scan cancelled")
+		}
+	}
+
 	// Await occupancy in the worker pool
 	phaseSemaphore <- struct{}{}
 

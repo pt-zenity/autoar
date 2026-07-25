@@ -4053,3 +4053,381 @@ select.input {
   cursor: pointer;
 }
 .acct-testall:hover { color: var(--accent-cyan); border-color: var(--accent-cyan-dim, var(--accent-cyan)); }
+/* ══════════════════════════════════════════════════════════════════════════════
+   GLASS UI — Glassmorphism Layer
+   Applies backdrop-filter blur + semi-transparent fills to all major surfaces.
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Glass CSS variables (extend root tokens) ─────────────────────────────── */
+:root {
+  --glass-bg:           rgba(17, 24, 39, 0.55);
+  --glass-bg-strong:    rgba(13, 17, 23, 0.72);
+  --glass-border:       rgba(255, 255, 255, 0.09);
+  --glass-border-glow:  rgba(6, 182, 212, 0.25);
+  --glass-blur:         blur(14px) saturate(160%);
+  --glass-blur-strong:  blur(22px) saturate(180%);
+  --glass-shadow:       0 8px 32px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255,255,255,0.06);
+  --glass-shadow-hover: 0 12px 40px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255,255,255,0.09);
+}
+
+/* ── Sidebar glass ────────────────────────────────────────────────────────── */
+.sidebar {
+  background: var(--glass-bg-strong) !important;
+  backdrop-filter: var(--glass-blur) !important;
+  -webkit-backdrop-filter: var(--glass-blur) !important;
+  border-right: 1px solid var(--glass-border) !important;
+  box-shadow: 2px 0 24px rgba(0, 0, 0, 0.35);
+}
+
+/* ── Topbar glass ─────────────────────────────────────────────────────────── */
+.topbar {
+  background: var(--glass-bg-strong) !important;
+  backdrop-filter: var(--glass-blur) !important;
+  -webkit-backdrop-filter: var(--glass-blur) !important;
+  border-bottom: 1px solid var(--glass-border) !important;
+  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Card glass ───────────────────────────────────────────────────────────── */
+.card {
+  background: var(--glass-bg) !important;
+  backdrop-filter: var(--glass-blur) !important;
+  -webkit-backdrop-filter: var(--glass-blur) !important;
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: var(--glass-shadow);
+  transition: box-shadow var(--transition), border-color var(--transition), transform var(--transition) !important;
+}
+
+.card:hover {
+  border-color: var(--glass-border-glow) !important;
+  box-shadow: var(--glass-shadow-hover);
+}
+
+/* ── Stat cards glass ─────────────────────────────────────────────────────── */
+.stat-card {
+  background: var(--glass-bg) !important;
+  backdrop-filter: var(--glass-blur) !important;
+  -webkit-backdrop-filter: var(--glass-blur) !important;
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: var(--glass-shadow);
+}
+
+.stat-card:hover {
+  border-color: var(--glass-border-glow) !important;
+  box-shadow: var(--glass-shadow-hover);
+  transform: translateY(-3px);
+}
+
+/* ── Scan items glass ─────────────────────────────────────────────────────── */
+.scan-item {
+  background: rgba(17, 24, 39, 0.45);
+  backdrop-filter: blur(8px) saturate(140%);
+  -webkit-backdrop-filter: blur(8px) saturate(140%);
+  border-radius: 10px;
+  border: 1px solid var(--glass-border) !important;
+  margin-bottom: 8px;
+  transition: border-color var(--transition), background var(--transition), box-shadow var(--transition);
+}
+
+.scan-item:hover {
+  background: rgba(17, 24, 39, 0.65) !important;
+  border-color: var(--glass-border-glow) !important;
+  box-shadow: 0 4px 20px rgba(6, 182, 212, 0.08);
+}
+
+/* ── Auth / Login card glass ──────────────────────────────────────────────── */
+.auth-card, .login-card, .auth-box {
+  background: var(--glass-bg) !important;
+  backdrop-filter: var(--glass-blur-strong) !important;
+  -webkit-backdrop-filter: var(--glass-blur-strong) !important;
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: var(--glass-shadow);
+}
+
+/* ── Domain cards glass ───────────────────────────────────────────────────── */
+.domain-card {
+  background: var(--glass-bg) !important;
+  backdrop-filter: blur(10px) saturate(150%) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(150%) !important;
+  border: 1px solid var(--glass-border) !important;
+  box-shadow: var(--glass-shadow);
+}
+
+.domain-card:hover {
+  border-color: var(--accent-cyan) !important;
+  box-shadow: var(--glass-shadow-hover), var(--shadow-glow-cyan) !important;
+}
+
+/* ── Refresh button glass ─────────────────────────────────────────────────── */
+.refresh-btn {
+  background: rgba(17, 24, 39, 0.5) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  border: 1px solid var(--glass-border) !important;
+}
+
+.refresh-btn:hover {
+  background: rgba(6, 182, 212, 0.1) !important;
+  border-color: var(--accent-cyan) !important;
+}
+
+/* ── Body background mesh ─────────────────────────────────────────────────── */
+body {
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 0%, rgba(6, 182, 212, 0.07) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 50% at 80% 80%, rgba(129, 140, 248, 0.06) 0%, transparent 55%),
+    var(--bg-base) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   LIVE LOG PANEL — Real-time scan log viewer
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Live log container (scan detail page) ────────────────────────────────── */
+.live-log-panel {
+  background: rgba(6, 12, 24, 0.80);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border: 1px solid rgba(6, 182, 212, 0.18);
+  border-radius: 12px;
+  box-shadow: 0 4px 32px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.04);
+  margin-bottom: 24px;
+  overflow: hidden;
+  transition: border-color 0.2s ease;
+}
+.live-log-panel:has(#live-log-dot:not(.done):not(.paused)) {
+  border-color: rgba(6, 182, 212, 0.35);
+}
+.live-log-panel.collapsed .live-log-body {
+  display: none;
+}
+
+.live-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  background: rgba(6, 182, 212, 0.04);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.live-log-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 0;
+}
+
+.live-log-title-text {
+  white-space: nowrap;
+}
+
+.live-log-status {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Live indicator dot */
+.live-log-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-emerald);
+  box-shadow: 0 0 8px var(--accent-emerald);
+  animation: liveLogPulse 1.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+.live-log-dot.paused {
+  background: var(--accent-amber);
+  box-shadow: 0 0 6px var(--accent-amber);
+  animation: none;
+}
+.live-log-dot.done {
+  background: var(--text-muted);
+  box-shadow: none;
+  animation: none;
+}
+
+@keyframes liveLogPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(1.35); }
+}
+
+.live-log-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 20px;
+  background: rgba(6, 182, 212, 0.12);
+  color: var(--accent-cyan);
+  border: 1px solid rgba(6, 182, 212, 0.22);
+  font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap;
+}
+
+.live-log-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.live-log-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid rgba(255,255,255,0.09);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+.live-log-btn:hover {
+  background: rgba(6, 182, 212, 0.1);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+.live-log-btn.active {
+  background: rgba(6, 182, 212, 0.15);
+  border-color: rgba(6, 182, 212, 0.5);
+  color: var(--accent-cyan);
+}
+
+/* Log body — the scrollable terminal area */
+.live-log-body {
+  height: 420px;
+  min-height: 180px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 10px 0;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+  font-size: 11.5px;
+  line-height: 1.65;
+  background: rgba(0,0,0,0.25);
+  scroll-behavior: auto;
+  resize: vertical;
+}
+.live-log-body::-webkit-scrollbar { width: 5px; }
+.live-log-body::-webkit-scrollbar-track { background: transparent; }
+.live-log-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+.live-log-body::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+/* Individual log lines */
+.live-log-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 1px 16px;
+  transition: background 60ms ease;
+  border-left: 2px solid transparent;
+}
+.live-log-line:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+.live-log-line.new-line {
+  animation: logLineIn 0.18s ease;
+}
+@keyframes logLineIn {
+  from { opacity: 0; transform: translateX(-4px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* Timestamps */
+.log-ts {
+  color: var(--text-muted);
+  font-size: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 52px;
+  opacity: 0.7;
+}
+
+/* Message body */
+.log-msg {
+  color: rgba(203, 213, 225, 0.8);
+  word-break: break-word;
+  white-space: pre-wrap;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Log level colouring */
+.live-log-line.log-info  .log-msg { color: rgba(203, 213, 225, 0.75); }
+.live-log-line.log-ok    .log-msg { color: var(--accent-emerald); }
+.live-log-line.log-ok    { border-left-color: rgba(16, 185, 129, 0.3); }
+.live-log-line.log-warn  .log-msg { color: var(--accent-amber); }
+.live-log-line.log-warn  { border-left-color: rgba(245, 158, 11, 0.3); }
+.live-log-line.log-error .log-msg { color: #fc8181; }
+.live-log-line.log-error { border-left-color: rgba(239, 68, 68, 0.4); background: rgba(239,68,68,0.04); }
+.live-log-line.log-phase .log-msg { color: var(--accent-cyan); font-weight: 600; letter-spacing: 0.02em; }
+.live-log-line.log-phase { border-left-color: rgba(6, 182, 212, 0.4); background: rgba(6,182,212,0.03); }
+.live-log-line.log-debug .log-msg { color: var(--text-muted); opacity: 0.6; }
+
+/* Empty / connecting state */
+.live-log-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 48px 20px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* Connecting spinner */
+.live-log-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(6, 182, 212, 0.15);
+  border-top-color: var(--accent-cyan);
+  border-radius: 50%;
+  animation: liveLogSpin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes liveLogSpin {
+  to { transform: rotate(360deg); }
+}
+
+.scan-log-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.03);
+  transition: all var(--transition);
+  margin-top: 6px;
+  user-select: none;
+}
+
+.scan-log-toggle:hover {
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  background: var(--accent-cyan-dim);
+}
+
+.scan-log-toggle .toggle-arrow {
+  transition: transform 0.2s ease;
+  display: inline-block;
+}
+
+.scan-log-toggle.open .toggle-arrow {
+  transform: rotate(180deg);
+}

@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -1922,13 +1921,16 @@ func apiScanParsedResults(c *gin.Context) {
 
 // GET /api/scans/:id/logs/stream — SSE live log stream for a scan.
 //
-// For in-process scans (runScanInProcess) the log bus is the primary source:
-//  1. All stored history lines are replayed immediately.
-//  2. New lines are pushed as they arrive until the scan finishes or the
-//     client disconnects.
+// Sources (tried in order, combined when both available):
+//  1. globalLogBus — receives all logrus lines from scan goroutines via the
+//     logBusHook installed at startup. History replayed immediately for late
+//     joiners. This covers all in-process scans.
+//  2. Log-file tail — fallback for subprocess scans that write to disk.
+//     Also used in parallel with the bus when both exist.
 //
-// For subprocess scans (executeScan) the log file on disk is tailed as
-// a fallback (existing behaviour).
+// The handler always subscribes to the bus first and streams until the scan
+// finishes (bus channel closed) or the client disconnects. It never races
+// to the log-file path before the scan goroutine has a chance to produce logs.
 func apiStreamScanLogs(c *gin.Context) {
 	scanID := strings.TrimSpace(c.Param("id"))
 	if scanID == "" {
@@ -1943,73 +1945,126 @@ func apiStreamScanLogs(c *gin.Context) {
 
 	ctx := c.Request.Context()
 
-	// ── In-process log bus path ──────────────────────────────────────────────
+	// ── Subscribe to the log bus ─────────────────────────────────────────────
 	history, busCh := globalLogBus.Subscribe(scanID)
 	defer globalLogBus.Unsubscribe(scanID, busCh)
 
-	// Replay stored history first so a late-joining browser catches up.
+	// Replay stored history immediately so late-joining browsers catch up.
 	for _, line := range history {
 		c.SSEvent("log", line)
 	}
 	c.Writer.Flush()
 
-	// If the bus has subscribers (scan is still in-process or recently finished),
-	// stream from it until client disconnects or channel closes.
-	if len(history) > 0 || func() bool {
-		// Check if scan is currently active in-process.
+	// Determine whether the scan is currently active in-process.
+	isActive := func() bool {
 		ScansMutex.RLock()
 		_, active := ActiveScans[scanID]
 		ScansMutex.RUnlock()
 		return active
-	}() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case line, ok := <-busCh:
-				if !ok {
-					// Bus closed — scan finished.
-					c.SSEvent("done", "scan finished")
-					c.Writer.Flush()
-					return
-				}
-				c.SSEvent("log", line)
-				c.Writer.Flush()
-			}
-		}
 	}
 
-	// ── Log-file fallback for subprocess scans ───────────────────────────────
+	// ── Combined bus + log-file tail ─────────────────────────────────────────
+	// Open the log file (if it exists) as a secondary source for subprocess scans.
+	// We read from the beginning so we don't miss any existing output.
 	logFile := filepath.Join(getScanResultsDir(scanID), "module.log")
 	if _, err := os.Stat(logFile); os.IsNotExist(err) {
 		logFile = filepath.Join(getScanResultsDir(scanID), "autoar.log")
 	}
-
-	file, err := os.Open(logFile)
-	if err != nil {
-		c.SSEvent("message", "Log file not yet available")
-		return
+	var logFd *os.File
+	if f, err := os.Open(logFile); err == nil {
+		logFd = f
+		defer logFd.Close()
 	}
-	defer file.Close()
 
-	// Start from end of existing content; only tail new output.
-	file.Seek(0, 2)
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
+	// fileTicker polls the log file every second (non-blocking when logFd==nil).
+	fileTicker := time.NewTicker(time.Second)
+	defer fileTicker.Stop()
 
+	// remainderBuf accumulates partial lines from the log file.
+	var fileRemainder []byte
+
+	sendFileLogs := func() {
+		if logFd == nil {
+			return
+		}
+		buf := make([]byte, 32*1024)
+		for {
+			n, err := logFd.Read(buf)
+			if n > 0 {
+				chunk := append(fileRemainder, buf[:n]...)
+				fileRemainder = nil
+				lines := strings.Split(string(chunk), "\n")
+				// Last element may be a partial line — hold it.
+				for i, ln := range lines {
+					if i == len(lines)-1 {
+						if ln != "" {
+							fileRemainder = []byte(ln)
+						}
+						break
+					}
+					if ln != "" {
+						c.SSEvent("log", ln)
+					}
+				}
+				c.Writer.Flush()
+			}
+			if err != nil {
+				break
+			}
+		}
+	}
+
+	// Send any existing file content immediately.
+	sendFileLogs()
+
+	// Stream loop: keep running while the scan is active OR the bus is open.
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			buf := make([]byte, 8192)
-			n, readErr := file.Read(buf)
-			if n > 0 {
-				c.SSEvent("log", string(buf[:n]))
+
+		case line, ok := <-busCh:
+			if !ok {
+				// Bus closed — scan finished. Send any remaining file bytes.
+				sendFileLogs()
+				c.SSEvent("done", "scan finished")
 				c.Writer.Flush()
-			}
-			if readErr != nil && readErr != io.EOF {
 				return
+			}
+			// Skip internal keepalive comment lines (": keepalive").
+			if strings.HasPrefix(line, ": ") {
+				c.Writer.Flush() // flush as a heartbeat
+				continue
+			}
+			c.SSEvent("log", line)
+			c.Writer.Flush()
+
+		case <-fileTicker.C:
+			sendFileLogs()
+			// If neither the bus nor ActiveScans has this scan, it is done.
+			if !isActive() {
+				// Give bus one more drain cycle.
+				select {
+				case line, ok := <-busCh:
+					if ok && !strings.HasPrefix(line, ": ") {
+						c.SSEvent("log", line)
+					}
+					if !ok {
+						c.SSEvent("done", "scan finished")
+						c.Writer.Flush()
+						return
+					}
+				default:
+				}
+				// No more active scan and bus is silent — close gracefully.
+				ScansMutex.RLock()
+				_, stillActive := ActiveScans[scanID]
+				ScansMutex.RUnlock()
+				if !stillActive {
+					c.SSEvent("done", "scan finished")
+					c.Writer.Flush()
+					return
+				}
 			}
 		}
 	}

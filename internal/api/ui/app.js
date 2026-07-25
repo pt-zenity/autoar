@@ -361,6 +361,78 @@ function normalizeModuleKey(module) {
   return callPageMethod('ScanCommonPage', 'normalizeModuleKey', [module], (String(module || '').toLowerCase().trim() || 'unknown'));
 }
 
+/**
+ * previewDataToFlatRows — converts a /results/file API response into a flat
+ * array of row objects suitable for the unified findings table in scan-detail.
+ *
+ * Each row has: { file, module, source, target, host, finding, title, severity }
+ *
+ * @param {Object} data   Response from /api/scans/:id/results/file
+ * @param {Object} f      Artifact descriptor from /api/scans/:id/artifacts
+ * @returns {Array}
+ */
+function previewDataToFlatRows(data, f) {
+  const fileName = f.file_name || f.fileName || '';
+  const module   = f.module   || detectModuleFromFileName(fileName) || 'unknown';
+  const source   = f.source   || '—';
+
+  function makeRow(target, finding, severity, extra) {
+    return Object.assign(
+      { file: fileName, module, source, target: target || '—', host: target || '—', finding: finding || '—', title: finding || '—', severity: severity || '—' },
+      extra || {}
+    );
+  }
+
+  try {
+    // ── plain text lines ─────────────────────────────────────────────────
+    if (data.format === 'text' && Array.isArray(data.lines)) {
+      return data.lines
+        .map((l) => String(l || '').trim())
+        .filter(Boolean)
+        .map((line) => {
+          // Nuclei-style: [severity] [template] [matcher] url
+          const nm = line.match(/^\[([a-zA-Z]+)\]\s+\[([^\]]+)\](?:\s+\[([^\]]+)\])?\s+(\S+)/);
+          if (nm) return makeRow(nm[4], nm[2] + (nm[3] ? ' [' + nm[3] + ']' : ''), nm[1].toLowerCase());
+          // URL / domain
+          if (/^https?:\/\//i.test(line) || /^[a-z0-9.-]+\.[a-z]{2,}/i.test(line)) return makeRow(line, line, '—');
+          return makeRow('—', line, '—');
+        });
+    }
+
+    // ── JSON array ───────────────────────────────────────────────────────
+    if (data.format === 'json-array' && Array.isArray(data.items)) {
+      return data.items.map((item) => {
+        if (typeof item === 'string') return makeRow(item, item, '—');
+        const target  = item.url || item.host || item.domain || item.subdomain || item.target || item.Host || item.URL || '—';
+        const finding = item.title || item['template-id'] || item.template_id || item.finding || item.vulnerability || item.name || item.endpoint || item.path || item.key || JSON.stringify(item).slice(0, 120);
+        const sev     = item.severity || item['cvss-score'] || item.risk || '—';
+        return makeRow(target, finding, sev, item);
+      });
+    }
+
+    // ── JSON object (wrapped) ────────────────────────────────────────────
+    if (data.format === 'json-object' && data.data) {
+      const obj = data.data;
+      let items = [];
+      for (const key of ['results', 'findings', 'matches', 'issues', 'vulnerabilities', 'data', 'items', 'hosts', 'subdomains']) {
+        if (Array.isArray(obj[key])) { items = obj[key]; break; }
+      }
+      if (!items.length) items = [obj];
+      return items.map((item) => {
+        if (typeof item === 'string') return makeRow(item, item, '—');
+        const target  = item.url || item.host || item.domain || item.subdomain || item.target || '—';
+        const finding = item.title || item['template-id'] || item.template_id || item.finding || item.name || JSON.stringify(item).slice(0, 120);
+        const sev     = item.severity || item.risk || '—';
+        return makeRow(target, finding, sev, item);
+      });
+    }
+  } catch (e) {
+    console.warn('[previewDataToFlatRows] parse error', e);
+  }
+
+  return [];
+}
+
 /** Get module display name with icon */
 function getModuleDisplayInfo(module) {
   return callPageMethod('ScanCommonPage', 'getModuleDisplayInfo', [module], { icon: '', name: 'Unknown', color: '#64748b' });
